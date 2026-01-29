@@ -366,4 +366,5 @@ elif "Importação" in menu_selecionado:
         col_sim, col_nao = st.columns(2)
         if col_sim.button("Sim, apagar tudo"):
             resetar_tabela_prazos(); st.success("Banco de dados de prazos resetado!"); st.session_state["confirm_reset"] = False; time.sleep(2); st.rerun()
+
         if col_nao.button("Cancelar"): st.session_state["confirm_reset"] = False; st.rerun()
