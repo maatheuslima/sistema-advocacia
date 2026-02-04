@@ -8,24 +8,22 @@ import re
 import base64
 from email.message import EmailMessage
 from datetime import date, datetime, timedelta
-import os 
+import os
+import extra_streamlit_components as stx # Biblioteca de Cookies
 
 # --- 1. CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="Georgia Luft - Sistema Jurídico", layout="wide", page_icon="⚖️", initial_sidebar_state="expanded")
 
-# --- CONFIGURAÇÕES DO EMAIL (BLINDAGEM TOTAL VIA SECRETS) ---
+# --- CONFIGURAÇÕES DO EMAIL ---
 try:
-    # Busca tudo no cofre. Se não achar, define vazio para não quebrar o app na inicialização
     EMAIL_REMETENTE = st.secrets["EMAIL_REMETENTE"]
     SENHA_DO_EMAIL = st.secrets["EMAIL_SENHA"]
     EMAIL_DESTINATARIO = st.secrets["EMAIL_DESTINATARIO"]
 except:
-    EMAIL_REMETENTE = ""
-    SENHA_DO_EMAIL = ""
-    EMAIL_DESTINATARIO = ""
+    EMAIL_REMETENTE = ""; SENHA_DO_EMAIL = ""; EMAIL_DESTINATARIO = ""
 
 # ==============================================================================
-# 🔐 SISTEMA DE LOGIN
+# 🔐 SISTEMA DE LOGIN (COM COOKIES / PERSISTÊNCIA)
 # ==============================================================================
 def get_base64_image(image_path):
     if os.path.exists(image_path):
@@ -34,50 +32,62 @@ def get_base64_image(image_path):
     return None
 
 def check_password():
-    if "password_correct" not in st.session_state:
-        st.session_state["password_correct"] = False
-
-    if not st.session_state["password_correct"]:
-        # --- CSS LOGIN (Esconde Sidebar) ---
-        st.markdown("""
-        <style>
-            .stApp { background-color: #151A1E !important; }
-            [data-testid="stSidebar"] { display: none !important; }
-            [data-testid="stSidebarCollapsedControl"] { display: none !important; }
-            .login-title { font-family: 'Cinzel', serif; color: #C5A065; text-align: center; font-size: 32px; margin-bottom: 5px; }
-            .login-subtitle { font-family: 'Lato', sans-serif; color: #FFFFFF; text-align: center; font-size: 14px; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 30px; }
-            .stTextInput input { background-color: #FFFFFF !important; color: #000000 !important; border: 2px solid #C5A065 !important; }
-            .stButton button { background-color: #C5A065 !important; color: #000000 !important; font-weight: bold; width: 100%; }
-        </style>
-        """, unsafe_allow_html=True)
-        
-        col1, col2, col3 = st.columns([1, 1, 1])
-        with col2:
-            st.markdown("<br><br>", unsafe_allow_html=True)
-            img_b64 = get_base64_image("foto_georgia.jpg")
-            if img_b64:
-                st.markdown(f"""<div style="display:flex;justify-content:center;margin-bottom:15px;"><img src="data:image/jpeg;base64,{img_b64}" style="width:120px;height:120px;border-radius:50%;border:3px solid #C5A065;object-fit:cover;"></div>""", unsafe_allow_html=True)
-            
-            st.markdown('<div class="login-title">GEORGIA LUFT</div>', unsafe_allow_html=True)
-            st.markdown('<div class="login-subtitle">Sistema Jurídico Integrado</div>', unsafe_allow_html=True)
-            
-            with st.form("login_form"):
-                senha_digitada = st.text_input("Credencial", type="password", placeholder="Digite sua senha...")
-                submitted = st.form_submit_button("ACESSAR")
-            
-            if submitted:
-                if "SENHA_DO_SISTEMA" in st.secrets:
-                    if senha_digitada == st.secrets["SENHA_DO_SISTEMA"]:
-                        st.session_state["password_correct"] = True
-                        st.rerun()
-                    else:
-                        st.error("🚫 Senha incorreta.")
-                else:
-                    st.error("⚠️ ERRO: Configure a senha nos Secrets.")
-        return False
-    else:
+    # 1. Inicializar o Gerenciador de Cookies
+    cookie_manager = stx.CookieManager()
+    
+    # 2. Verificar se já está logado na Sessão (Memória RAM)
+    if st.session_state.get("password_correct", False):
         return True
 
+    # 3. Se não está na RAM, verifica se tem o COOKIE (Memória do Navegador)
+    cookie_auth = cookie_manager.get(cookie="georgia_auth_token")
+    
+    # Se o cookie existe e é válido (igual a uma assinatura simples)
+    if cookie_auth == "acesso_permitido_v1":
+        st.session_state["password_correct"] = True
+        return True
+
+    # 4. Se não tem cookie nem sessão, mostra a TELA DE LOGIN
+    st.markdown("""
+    <style>
+        .stApp { background-color: #151A1E !important; }
+        [data-testid="stSidebar"] { display: none !important; }
+        [data-testid="stSidebarCollapsedControl"] { display: none !important; }
+        .login-title { font-family: 'Cinzel', serif; color: #C5A065; text-align: center; font-size: 32px; margin-bottom: 5px; }
+        .login-subtitle { font-family: 'Lato', sans-serif; color: #FFFFFF; text-align: center; font-size: 14px; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 30px; }
+        .stTextInput input { background-color: #FFFFFF !important; color: #000000 !important; border: 2px solid #C5A065 !important; }
+        .stButton button { background-color: #C5A065 !important; color: #000000 !important; font-weight: bold; width: 100%; }
+    </style>
+    """, unsafe_allow_html=True)
+    
+    col1, col2, col3 = st.columns([1, 1, 1])
+    with col2:
+        st.markdown("<br><br>", unsafe_allow_html=True)
+        img_b64 = get_base64_image("foto_georgia.jpg")
+        if img_b64:
+            st.markdown(f"""<div style="display:flex;justify-content:center;margin-bottom:15px;"><img src="data:image/jpeg;base64,{img_b64}" style="width:120px;height:120px;border-radius:50%;border:3px solid #C5A065;object-fit:cover;"></div>""", unsafe_allow_html=True)
+        
+        st.markdown('<div class="login-title">GEORGIA LUFT</div>', unsafe_allow_html=True)
+        st.markdown('<div class="login-subtitle">Sistema Jurídico Integrado</div>', unsafe_allow_html=True)
+        
+        with st.form("login_form"):
+            senha_digitada = st.text_input("Credencial", type="password", placeholder="Digite sua senha...")
+            submitted = st.form_submit_button("ACESSAR")
+        
+        if submitted:
+            if "SENHA_DO_SISTEMA" in st.secrets:
+                if senha_digitada == st.secrets["SENHA_DO_SISTEMA"]:
+                    st.session_state["password_correct"] = True
+                    # GRAVAR O COOKIE (Válido por 7 dias)
+                    cookie_manager.set("georgia_auth_token", "acesso_permitido_v1", expires_at=datetime.now() + timedelta(days=7))
+                    st.rerun()
+                else:
+                    st.error("🚫 Senha incorreta.")
+            else:
+                st.error("⚠️ ERRO: Configure a senha nos Secrets.")
+    return False
+
+# 🛑 BLOQUEIO
 if not check_password():
     st.stop()
 
@@ -85,7 +95,7 @@ if not check_password():
 # 🚀 APLICAÇÃO PRINCIPAL
 # ==============================================================================
 
-# --- CSS GERAL (Restaura Sidebar) ---
+# --- CSS GERAL ---
 st.markdown("""
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&family=Cinzel:wght@700&display=swap');
@@ -105,19 +115,16 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- CONEXÃO E BANCO ---
+# --- CONEXÃO ---
 @st.cache_resource
 def init_connection():
     try: return psycopg2.connect(st.secrets["DATABASE_URL"])
     except: return None
-
 def conectar_banco():
     conn = init_connection()
     if conn and conn.closed: st.cache_resource.clear(); conn = init_connection()
     return conn
-
 def limpar_cache_dados(): st.cache_data.clear()
-
 def criar_tabelas():
     conn = conectar_banco()
     if conn:
@@ -126,19 +133,17 @@ def criar_tabelas():
             cursor.execute('''CREATE TABLE IF NOT EXISTS atendimentos (id SERIAL PRIMARY KEY, data_atendimento DATE, nome_cliente TEXT, cpf_cliente TEXT, telefone TEXT, senha_sigrh TEXT, motivo TEXT, obs TEXT)''')
         conn.commit()
 
-# --- CRUD ---
+# --- FUNÇÕES ---
 def adicionar_prazo(numero, nome, info, evento, data, obs):
     conn = conectar_banco()
     if conn:
         with conn.cursor() as cursor: cursor.execute("INSERT INTO prazos (numero_processo, nome_cliente, info, evento, data_prazo, obs, status) VALUES (%s, %s, %s, %s, %s, %s, 'Pendente')", (numero, nome, info, evento, data, obs))
         conn.commit(); limpar_cache_dados() 
-
 def adicionar_atendimento(data, nome, cpf, telefone, senha, motivo):
     conn = conectar_banco()
     if conn:
         with conn.cursor() as cursor: cursor.execute("INSERT INTO atendimentos (data_atendimento, nome_cliente, cpf_cliente, telefone, senha_sigrh, motivo, obs) VALUES (%s, %s, %s, %s, %s, %s, '')", (data, nome, cpf, telefone, senha, motivo))
         conn.commit(); limpar_cache_dados()
-
 @st.cache_data(ttl=600) 
 def carregar_dados(tabela, status_filtro=None):
     conn = conectar_banco()
@@ -146,83 +151,51 @@ def carregar_dados(tabela, status_filtro=None):
     if conn:
         try:
             if tabela == 'prazos':
-                query = "SELECT * FROM prazos WHERE status = %s"
-                df = pd.read_sql(query, conn, params=(status_filtro,))
-                if not df.empty:
-                    df['data_prazo'] = pd.to_datetime(df['data_prazo']).dt.date
-                    df = df.sort_values(by='data_prazo', ascending=(status_filtro == 'Pendente'))
+                query = "SELECT * FROM prazos WHERE status = %s"; df = pd.read_sql(query, conn, params=(status_filtro,))
+                if not df.empty: df['data_prazo'] = pd.to_datetime(df['data_prazo']).dt.date; df = df.sort_values(by='data_prazo', ascending=(status_filtro == 'Pendente'))
             else:
-                query = "SELECT * FROM atendimentos"
-                df = pd.read_sql(query, conn)
-                if not df.empty:
-                    df['data_atendimento'] = pd.to_datetime(df['data_atendimento']).dt.date
-                    df = df.sort_values(by='data_atendimento', ascending=False)
+                query = "SELECT * FROM atendimentos"; df = pd.read_sql(query, conn)
+                if not df.empty: df['data_atendimento'] = pd.to_datetime(df['data_atendimento']).dt.date; df = df.sort_values(by='data_atendimento', ascending=False)
         except: pass
     return df
-
 def atualizar_registro(tabela, id_reg, dados):
     conn = conectar_banco()
     if conn:
-        with conn.cursor() as cursor:
-            sets = ", ".join([f"{col} = %s" for col in dados.keys()])
-            valores = list(dados.values()); valores.append(id_reg)
-            cursor.execute(f"UPDATE {tabela} SET {sets} WHERE id = %s", valores)
+        with conn.cursor() as cursor: sets = ", ".join([f"{col} = %s" for col in dados.keys()]); valores = list(dados.values()); valores.append(id_reg); cursor.execute(f"UPDATE {tabela} SET {sets} WHERE id = %s", valores)
         conn.commit(); limpar_cache_dados()
-
 def excluir_registro_db(tabela, lista_ids):
     conn = conectar_banco()
     if conn:
         with conn.cursor() as cursor: cursor.executemany(f"DELETE FROM {tabela} WHERE id = %s", [(i,) for i in lista_ids])
         conn.commit(); limpar_cache_dados()
-
 def alterar_status_lote(lista_ids, novo_status):
     conn = conectar_banco()
     if conn:
         with conn.cursor() as cursor: cursor.executemany("UPDATE prazos SET status = %s WHERE id = %s", [(novo_status, i) for i in lista_ids])
         conn.commit(); limpar_cache_dados()
-
 def resetar_tabela_prazos():
     conn = conectar_banco()
     if conn:
-        with conn.cursor() as cursor: cursor.execute("DELETE FROM prazos")
-        conn.commit(); limpar_cache_dados()
-
+        with conn.cursor() as cursor: cursor.execute("DELETE FROM prazos"); conn.commit(); limpar_cache_dados()
 def enviar_email_alerta(df_urgente):
-    if not EMAIL_REMETENTE or not SENHA_DO_EMAIL or not EMAIL_DESTINATARIO:
-        st.error("Erro: Credenciais de e-mail incompletas nos Secrets!")
-        return
-    
-    msg = EmailMessage()
-    msg['Subject'] = f"🚨 URGENTE: {len(df_urgente)} Processos Vencendo!"
-    msg['From'] = EMAIL_REMETENTE
-    msg['To'] = EMAIL_DESTINATARIO
-    
+    if not EMAIL_REMETENTE or not SENHA_DO_EMAIL or not EMAIL_DESTINATARIO: st.error("Erro: Credenciais de e-mail incompletas!"); return
+    msg = EmailMessage(); msg['Subject'] = f"🚨 URGENTE: {len(df_urgente)} Processos Vencendo!"; msg['From'] = EMAIL_REMETENTE; msg['To'] = EMAIL_DESTINATARIO
     corpo = "Olá Dra. Georgia,\n\nOs seguintes processos precisam de atenção IMEDIATA:\n\n"
-    for _, row in df_urgente.iterrows():
-        d = row['data_prazo'].strftime('%d/%m/%Y')
-        corpo += f"🔴 {d} - {row['nome_cliente']} (Proc: {row['numero_processo']})\n   Evento: {row['evento']}\n\n"
-    
-    corpo += "\nAcesse o sistema: https://share.streamlit.io"
-    msg.set_content(corpo)
-
+    for _, row in df_urgente.iterrows(): d = row['data_prazo'].strftime('%d/%m/%Y'); corpo += f"🔴 {d} - {row['nome_cliente']} (Proc: {row['numero_processo']})\n   Evento: {row['evento']}\n\n"
+    corpo += "\nAcesse o sistema: https://share.streamlit.io"; msg.set_content(corpo)
     try:
-        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
-            smtp.login(EMAIL_REMETENTE, SENHA_DO_EMAIL)
-            smtp.send_message(msg)
+        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp: smtp.login(EMAIL_REMETENTE, SENHA_DO_EMAIL); smtp.send_message(msg)
         st.toast("✅ E-mail enviado com sucesso!")
-    except Exception as e:
-        st.error(f"Falha ao enviar e-mail: {e}")
+    except Exception as e: st.error(f"Falha ao enviar e-mail: {e}")
 
 criar_tabelas()
-
 def calcular_urgencia(data_prazo):
     if not isinstance(data_prazo, date): return "⚪"
     hoje = date.today(); dias = (data_prazo - hoje).days
-    if dias < 0: return "🔴 ATRASADO"
-    elif dias == 0: return "🚨 HOJE"
-    elif dias <= 3: return "🔥 URGENTE"
+    if dias < 0: return "🔴 ATRASADO"; 
+    elif dias == 0: return "🚨 HOJE"; 
+    elif dias <= 3: return "🔥 URGENTE"; 
     else: return "✅ NO PRAZO"
-
 def verificar_edicoes(df_original, df_editado, tabela):
     if tabela == 'prazos': cols = ['numero_processo', 'nome_cliente', 'info', 'evento', 'data_prazo', 'obs']
     else: cols = ['data_atendimento', 'nome_cliente', 'cpf_cliente', 'telefone', 'senha_sigrh', 'motivo', 'obs']
@@ -231,10 +204,7 @@ def verificar_edicoes(df_original, df_editado, tabela):
     df_new = df_editado.set_index('id')[cols]
     diff = df_orig_filtrada.astype(str).compare(df_new.astype(str))
     if not diff.empty:
-        for id_alt in diff.index.unique():
-            linha = df_new.loc[id_alt]
-            dados = {c: linha[c] for c in cols}
-            atualizar_registro(tabela, int(id_alt), dados)
+        for id_alt in diff.index.unique(): linha = df_new.loc[id_alt]; dados = {c: linha[c] for c in cols}; atualizar_registro(tabela, int(id_alt), dados)
         return True
     return False
 
@@ -245,7 +215,12 @@ with st.sidebar:
     menu_selecionado = st.radio("NAVEGAÇÃO", ["📊 Dashboard (Prazos)", "👥 Atendimentos", "📂 Arquivo Morto", "📥 Importação Excel"], label_visibility="collapsed")
     st.markdown("---")
     st.markdown(f"<div style='text-align: center; color: white !important;'>📅 {date.today().strftime('%d/%m/%Y')}</div>", unsafe_allow_html=True)
-    if st.button("Sair / Logout"): st.session_state["password_correct"] = False; st.rerun()
+    
+    # --- BOTÃO SAIR (COM REMOÇÃO DE COOKIE) ---
+    if st.button("Sair / Logout"):
+        stx.CookieManager().delete("georgia_auth_token") # Apaga o cookie
+        st.session_state["password_correct"] = False
+        st.rerun()
 
 # --- ÁREA PRINCIPAL ---
 df_prazos = carregar_dados('prazos', 'Pendente')
@@ -269,8 +244,7 @@ if "Dashboard" in menu_selecionado:
         if not df_urgente.empty:
             st.markdown("""<div class="main-card" style="border-left: 5px solid #D32F2F;"><h3 style="color: #D32F2F; margin:0;">🔥 AÇÃO NECESSÁRIA</h3><p style="color: #555;">Processos vencendo hoje ou atrasados.</p>""", unsafe_allow_html=True)
             st.markdown('<div class="btn-alerta">', unsafe_allow_html=True)
-            if st.button("🔔 DISPARAR ALERTA DE EMAIL"): 
-                enviar_email_alerta(df_urgente)
+            if st.button("🔔 DISPARAR ALERTA DE EMAIL"): enviar_email_alerta(df_urgente)
             st.markdown('</div>', unsafe_allow_html=True)
             editor_urg = st.data_editor(df_urgente[['CONCLUÍDO', 'STATUS', 'data_prazo', 'nome_cliente', 'numero_processo', 'info', 'evento', 'obs', 'EXCLUIR', 'id']], column_config={"CONCLUÍDO": st.column_config.CheckboxColumn("Baixar", width="small"), "STATUS": st.column_config.TextColumn("Status", width="small"), "data_prazo": st.column_config.DateColumn("Vencimento", format="DD/MM/YYYY"), "nome_cliente": st.column_config.TextColumn("Cliente", width="medium"), "EXCLUIR": st.column_config.CheckboxColumn("Del", width="small"), "id": None}, hide_index=True, use_container_width=True, key="grid_urg")
             st.markdown("</div>", unsafe_allow_html=True)
@@ -280,7 +254,7 @@ if "Dashboard" in menu_selecionado:
         st.markdown('<div class="main-card">', unsafe_allow_html=True)
         st.subheader("📅 Próximos Prazos")
         if not df_futuro.empty:
-            editor_fut = st.data_editor(df_futuro[['CONCLUÍDO', 'STATUS', 'data_prazo', 'nome_cliente', 'numero_processo', 'info', 'evento', 'obs', 'EXCLUIR', 'id']], column_config={"CONCLUÍDO": st.column_config.CheckboxColumn("Baixar"), "STATUS": st.column_config.TextColumn("Status"), "data_prazo": st.column_config.DateColumn("Vencimento", format="DD/MM/YYYY"), "nome_cliente": st.column_config.TextColumn("Cliente", width="medium"), "EXCLUIR": st.column_config.CheckboxColumn("Del"), "id": None}, hide_index=True, use_container_width=True, key="grid_fut")
+            editor_fut = st.data_editor(df_futuro[['CONCLUÍDO', 'STATUS', 'data_prazo', 'nome_cliente', 'numero_processo', 'info', 'evento', 'obs', 'EXCLUIR', 'id']], column_config={"CONCLUÍDO": st.column_config.CheckboxColumn("Baixar"), "STATUS": st.column_config.TextColumn("Status", width="small"), "data_prazo": st.column_config.DateColumn("Vencimento", format="DD/MM/YYYY"), "nome_cliente": st.column_config.TextColumn("Cliente", width="medium"), "EXCLUIR": st.column_config.CheckboxColumn("Del"), "id": None}, hide_index=True, use_container_width=True, key="grid_fut")
             if verificar_edicoes(df_prazos, editor_fut, 'prazos'): st.toast("Salvo!"); time.sleep(0.5); st.rerun()
             if editor_fut[editor_fut['EXCLUIR']].any().any(): excluir_registro_db('prazos', editor_fut[editor_fut['EXCLUIR']]['id'].tolist()); st.rerun()
             if editor_fut[editor_fut['CONCLUÍDO']].any().any(): alterar_status_lote(editor_fut[editor_fut['CONCLUÍDO']]['id'].tolist(), 'Concluído'); st.rerun()
@@ -366,5 +340,4 @@ elif "Importação" in menu_selecionado:
         col_sim, col_nao = st.columns(2)
         if col_sim.button("Sim, apagar tudo"):
             resetar_tabela_prazos(); st.success("Banco de dados de prazos resetado!"); st.session_state["confirm_reset"] = False; time.sleep(2); st.rerun()
-
         if col_nao.button("Cancelar"): st.session_state["confirm_reset"] = False; st.rerun()
